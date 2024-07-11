@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home</title>
+    <link rel="shortcut icon" href="favicon.png">
+
+    <script src="mqtt.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.2.6/mqtt.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<script type="module">
+    import { createApp } from './petitevue.js'
+
+    const client = mqtt.connect('ws://public.mqtthq.com:8083/mqtt');
+
+    createApp({
+        lights: true,
+        soundIsHeard: false,
+        currentTempInside: 20,
+        currentTempOutside: 20,
+        windowOpened: false,
+
+        connected: false,
+        calibrated: false,
+
+        automatic: false,
+
+        debug: false,
+
+        lowTemp: 15,
+        highTemp: 25,
+
+        client: null,
+
+        mounted() {
+
+            client.on('connect', () => {
+                this.connected = true;
+                console.log('Connected to MQTT');
+                client.subscribe('itech-team4-levinMussRaus-kaffee');
+                client.subscribe('itech-team4-levinMussRaus-kaffee1')
+            })
+
+            client.on('error', function(error) {
+
+                console.log('MQTT error: ' + error);
+            })
+
+            client.on("message", (topic, payload) => {
+                
+                if(topic.charAt(topic.length - 1) === '1') {
+                    return
+                }
+
+                try {
+                    const message = JSON.parse(payload.toString())
+                    console.log(message)
+                    
+                    if(!this.calibrated) {
+                        this.calibrated = true
+                        this.lights = message.led_wert
+                        this.automatic = message.automatic
+                        this.windowOpened = message.jalousien === "Unten" ? false : true
+    
+                        this.changeInsideTemperature(message.innentemperatur)
+                        this.changeOutsideTemperature(message.außentemperatur)           
+                        this.changeSoundHeard(message.lautstärke)           
+
+                    }
+                    
+                } catch(e) {
+                    // console.log(e)
+                    // console.log(payload.toString())
+                }
+                
+            }, {qos: 2})
+        },
+
+
+        toggleLights() {
+            if(this.automatic) {
+                this.automatic = false
+                this.lights = false
+            } else {
+                this.lights = !this.lights
+            }
+            this.mqttToggleLights(this.lights)
+        },
+        
+        toggleWindow() {
+            this.automatic = false
+            this.windowOpened = !this.windowOpened
+            this.mqttToggleWindows(this.windowOpened)
+        },
+
+        toggleAutomatic() {
+            this.automatic = true
+            this.mqttToggleAutomatic()
+        },
+
+        changeInsideTemperature(newTemp) {
+            this.currentTempInside = newTemp
+        },
+
+        changeOutsideTemperature(newTemp) {
+            this.currentTempOutside = newTemp
+        },
+
+        changeSoundHeard(newSound) {
+            // console.log(newSound)
+            this.soundIsHeard = newSound
+        },
+
+        // itech-team4-levinMussRaus-kaffee
+
+
+        sendMQTTMessage(message) {
+            console.log(message)
+            client.publish('itech-team4-levinMussRaus-kaffee1', message.toString(), {qos: 2}, (error) => {
+                console.log('Error: ' + error)
+            });
+        },
+
+        mqttToggleLights() {
+            this.sendMQTTMessage(0)
+        },
+
+        mqttToggleAutomatic() {
+            this.sendMQTTMessage(3)
+        },
+
+        mqttToggleWindows(value) {
+            this.sendMQTTMessage(
+                this.windowOpened ? 1 : 2
+            )
+        },
+    }).mount()
+
+</script>
+
+<body v-scope :class="{on: lights}" @vue:mounted="mounted()">
+
+    <button class="absolute top-1 right-1" id="debug-button" v-show="!debug" @click="debug = true">Debug</button>
+
+    <div class="absolute top-1 right-1" v-show="debug">
+        <button @click="debug = false">Close</button>
+        <button @click="soundIsHeard = !soundIsHeard">toggle sound</button>
+        <input v-model="currentTempInside" type="range" value="20" min="-5" max="35">
+        <input v-model="currentTempOutside" type="range" value="20" min="-5" max="35" >
+    </div>
+
+    <div id="container" :class="{automatic}">
+
+        <div id="connecting" :class="{connected: connected && calibrated, calibrating: connected && !calibrated}">
+            <h1 v-show="!connected">Connecting to your Smart Home system...</h1>
+            <h1 v-show="connected && !calibrated">Calibrating... <br></h1>
+        </div>
+
+        <h1>Smart home</h1>
+        
+        <h3>Steuerung</h3>
+        
+        <div class="flex gap flex-col relative">
+
+            <div class="flex w-full justify-between gap">
+                <div class="flex">
+                    <img v-show="!automatic" src="wrench.svg" alt="Light">
+                    <img v-show="automatic" src="auto-mode.svg" alt="Light">
+                    <button v-show="!automatic" class="default-button" @click="toggleAutomatic()">
+                        <!-- {{ automatic ? 'Automatic Mode' : 'Manual Mode' }} -->
+                        Turn on Automatic Mode
+                    </button>
+                    <div class="panel" v-show="automatic">Automatic Mode</div>
+                </div>
+    
+                <div class="panel" v-show="automatic">Turned On</div>
+                <div class="panel" v-show="!automatic">Turned Off</div>
+            </div>
+            
+            <div class="flex w-full justify-between gap">
+                <div class="flex">
+                    <img v-show="!lights" src="lightbulb.svg" alt="Light">
+                    <img v-show="lights" src="lightbulb-on.svg" alt="Light">
+                    <button class="default-button" @click="toggleLights()">
+                        {{ lights ? 'Turn off lights' : 'Turn on lights' }}
+                    </button>
+                </div>
+    
+                <div class="panel" v-show="lights">Lights are on</div>
+                <div class="panel" v-show="!lights">Lights are off</div>
+            </div>
+    
+            <div class="flex justify-between"> 
+                
+                <div class="flex">
+                    <img v-show="windowOpened" src="window-open.svg" alt="Open window">
+                    <img v-show="!windowOpened" src="window-closed.svg" alt="Open window">
+                    <button class="default-button" @click="toggleWindow()">
+                        <p v-show="windowOpened">Fenster schließen</p>
+                        <p v-show="!windowOpened">Fenster öffnen</p>
+                    </button>    
+                </div>
+    
+                <div class="panel">
+                    {{ windowOpened ? 'Fenster Offen' : 'Fenster Geschlossen'}}
+                </div>
+            </div>
+        </div>
+
+
+        <h3> Informationen </h3>
+
+        <div class="flex">
+            
+            <img v-if="currentTempInside < lowTemp" src="thermometer-low.svg" alt="">
+            <img v-else-if="currentTempInside < highTemp" src="thermometer.svg" alt="">
+            <img v-else src="thermometer-high.svg" alt="">
+
+            <div class="indicator-panel" :class="{
+                ice: currentTempInside < lowTemp,
+                danger: currentTempInside > highTemp
+            }">
+                Innentemperatur: {{ currentTempInside }}
+    
+                <p v-if="currentTempInside < lowTemp">Sehr kalt!</p>
+                <p v-else-if="currentTempInside < highTemp">Angenehm</p>
+                <p v-else>Sehr warm!</p>
+            </div>
+        </div>
+
+        <div class="flex">
+
+            <img v-if="currentTempOutside< lowTemp" src="thermometer-low.svg" alt="">
+            <img v-else-if="currentTempOutside < highTemp" src="thermometer.svg" alt="">
+            <img v-else src="thermometer-high.svg" alt="">
+
+            <div class="indicator-panel" :class="{
+                ice: currentTempOutside < lowTemp,
+                danger: currentTempOutside > highTemp
+            }">
+                Außentemperatur: {{ currentTempOutside }}
+    
+                <p v-if="currentTempOutside < lowTemp">Sehr kalt!</p>
+                <p v-else-if="currentTempOutside < highTemp">Angenehm</p>
+                <p v-else>Sehr warm!</p>
+            </div>
+        </div>
+
+        <div class="flex">
+
+            <img v-show="soundIsHeard" src="volume-high.svg" alt="Sound">
+            <img v-show="!soundIsHeard" src="volume-low.svg" alt="Sound">
+
+            <div class="indicator-panel justify-center" class="flex" :class="{normal: !soundIsHeard}">                
+                <p> {{ soundIsHeard ? 'Ton erkannt' : 'Kein ton'}} </p>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+<style>
+
+    #connecting {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 100%;
+        background: rgba(144, 144, 144, 0.558);
+        backdrop-filter: blur(10px);
+        color: black;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+
+        z-index: 20;
+
+        transition: linear .2s;
+    }
+
+    #connecting.calibrating {
+        background: rgba(255, 255, 255, 0.574);
+    }
+
+    #connecting.connected {
+        pointer-events: none;
+        opacity: 0;
+    }
+
+    img {
+        height: 35px;
+        align-self: center;
+        margin-right: 5px;
+        filter: invert(100%);
+
+        transition: linear .2s;
+        
+    }
+
+    .default-button {
+        width: 170px;
+        height: 50px;
+        background: rgb(245, 253, 255);
+        border: 3px solid white;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 12pt;
+
+        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+
+        transition: ease-out .2s;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .panel {
+        /* padding: 10px; */
+        margin: 0;
+        background: rgb(248, 254, 255);
+        width: 170px;
+        border-radius: 5px;
+        color: black;
+
+        text-align: center;
+
+        /* max-height: 80px; */
+        /* height: 100%; */
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        border: 3px solid white;
+
+        transition: linear 0.05s;
+    }
+    
+    .default-button:hover {
+        transform: scale(1.05);
+        box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px;
+    }
+
+    body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        user-select: none;
+
+        height: 100dvh;
+
+        font-family:'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+
+        background: rgb(19, 19, 19);
+
+        transition: ease-out .2s;
+
+    }
+
+    body.on {
+        background: white;
+    }
+
+    body.on img {
+        filter: invert(80%);
+    }
+
+    body.on #container {
+        box-shadow: rgba(0, 0, 0, 0.35) 0px 5px 15px !important;
+    }    
+    
+    #container {
+        
+        display: flex;
+        flex-direction: column;
+        
+        /* background: linear-gradient(135deg, #f5f7fadb 0%, #c3cfe2cd 100%);*/
+
+        background: rgba(226, 226, 226, 0.941);
+        backdrop-filter: blur(10px);
+        width: 500px;
+        max-width: 90%;
+        height: auto;
+        padding: 50px;
+        border-radius: 10px;
+        border: 2px solid white;
+        
+        gap: 5px;
+        box-shadow: rgba(190, 226, 255, 0.56) 0px 22px 70px 4px;
+
+        transition: ease-out .4s;
+    }
+
+    #container.automatic {
+        background: rgba(191, 232, 255, 0.816);
+    }
+
+    .indicator-panel {
+        transition: ease-out .5s;
+        background: rgb(109, 201, 109);
+        border-radius: 10px;
+        padding: 5px;
+        width: 100%;
+
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: white;
+
+        border: 2px solid white;
+    }
+
+    .indicator-panel.danger {
+        background: rgb(255, 118, 118);
+    }
+
+    .indicator-panel.ice {
+        background: rgb(176, 242, 255);
+        color: black;
+    }
+
+    .indicator-panel.normal {
+        background: rgb(184, 184, 184);
+    }
+
+    #volume-sensor .indicator {
+        margin-left: 20px;
+        padding: 5px;
+        background: white;
+        border-radius: 5px;
+
+        color: black;
+    }
+
+    #temp-regulator {
+        gap: 5px;
+    }
+
+    #temp-regulator button {
+        height: 20px;
+        width: 20px;
+    }
+
+    #debug-button {
+        width: 60px;
+        height: 30px;
+        background: rgba(0, 0, 0, 0.23);
+        border: none;
+        cursor: pointer;
+        opacity: 0;
+    }
+
+    .flex {
+        display: flex;
+    }
+
+    .flex-col {
+        flex-direction: column;
+    }
+
+    .w-full {
+        width: 100%;
+    }
+
+    .justify-center {
+        justify-content: center;
+    }
+
+    .justify-between {
+        justify-content: space-between;
+    }
+
+    .items-center {
+        align-items: center;
+    }
+
+    .gap {
+        gap: 10px;
+    }
+
+    .top-1 {
+        top: 1rem;
+    }
+
+    .right-1 {
+        right: 1rem;
+    }
+
+    .absolute {
+        position: absolute;
+    }
+
+    .relative {
+        position: relative;
+    }
+</style>
+</html>
