@@ -59,17 +59,15 @@
                     const message = JSON.parse(payload.toString())
                     console.log(message)
                     
-                    if(!this.calibrated) {
+                    if(!this.calibrated || this.automatic) {
                         this.calibrated = true
                         this.lights = message.led_wert
                         this.automatic = message.automatic
                         this.windowOpened = message.jalousien === "Unten" ? false : true
-    
-                        this.changeInsideTemperature(message.innentemperatur)
-                        this.changeOutsideTemperature(message.außentemperatur)           
-                        this.changeSoundHeard(message.lautstärke)           
-
                     }
+                    this.changeInsideTemperature(message.innentemperatur)
+                    this.changeOutsideTemperature(message.außentemperatur)           
+                    this.changeSoundHeard(message.lautstärke)           
                     
                 } catch(e) {
                     // console.log(e)
@@ -77,6 +75,10 @@
                 }
                 
             }, {qos: 2})
+        },
+
+        calibrate() {
+            this.calibrated = false
         },
 
 
@@ -158,6 +160,11 @@
             <h1 v-show="!connected">Connecting to your Smart Home system...</h1>
             <h1 v-show="connected && !calibrated">Calibrating... <br></h1>
         </div>
+
+
+        <button class="default-button top-1 right-1 absolute" @click="calibrate()">
+            Calibrate
+        </button>
 
         <h1>Smart home</h1>
         
